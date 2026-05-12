@@ -58,7 +58,8 @@ services:
       - ENV=production
       - GROQ_API_KEY=${GROQ_API_KEY:?Please set GROQ_API_KEY in your .env file}
       - GOOGLE_GEMINI_API_KEY=${GOOGLE_GEMINI_API_KEY}
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-${FRONTEND_URL:-http://localhost}}
+      # Keep this aligned with FRONTEND_URL; set both explicitly in .env when needed.
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost}
     deploy:
       resources:
         limits:
