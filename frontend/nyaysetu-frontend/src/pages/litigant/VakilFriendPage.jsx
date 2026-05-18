@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Bot, User, CheckCircle, ArrowLeft, Loader2, History, Plus, MessageSquare, Paperclip, FileText, X, Mic, StopCircle, Volume2, Shield, AlertTriangle, CheckCircle2, Eye, UserCircle2 } from 'lucide-react';
+import { Send, Bot, User, CheckCircle, ArrowLeft, Loader2, History, Plus, MessageSquare, Paperclip, Scan, FileText, X, Mic, StopCircle, Volume2, Shield, AlertTriangle, CheckCircle2, Eye, UserCircle2 } from 'lucide-react';
 import { vakilFriendAPI } from '../../services/api';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { API_BASE_URL } from '../../config/apiConfig';
 import AvatarPanel from '../../components/avatar/AvatarPanel';
+import useChatStore from '../../store/chatStore';
 
 export default function VakilFriendChat() {
     const [messages, setMessages] = useState([]);
@@ -22,6 +23,8 @@ export default function VakilFriendChat() {
     const [attachedFiles, setAttachedFiles] = useState([]); // For document attachments
     const [uploadingFile, setUploadingFile] = useState(false);
     const [documentAnalysis, setDocumentAnalysis] = useState(null); // AI analysis results
+    const [isScanningDocument, setIsScanningDocument] = useState(false);
+    const {documentContext, setDocumentContext, clearDocumentContext} = useChatStore();
     const [showAnalysisModal, setShowAnalysisModal] = useState(false); // Show analysis modal
     const [language, setLanguage] = useState('en'); // Default language
     const [isRecording, setIsRecording] = useState(false);
@@ -47,6 +50,7 @@ export default function VakilFriendChat() {
 
     const messagesContainerRef = useRef(null);
     const fileInputRef = useRef(null);
+    const ocrFileInputRef = useRef(null);
     const shouldAutoScrollRef = useRef(true); // Control auto-scroll behavior
     const navigate = useNavigate();
 
@@ -173,6 +177,7 @@ export default function VakilFriendChat() {
     // Start a new session
     const startNewSession = async () => {
         setMessages([]);
+        clearDocumentContext();
         setSessionId(null);
         setReadyToFile(false);
         await startSession();
@@ -262,7 +267,8 @@ export default function VakilFriendChat() {
             const payload = {
                 message: userMessage,
                 language: language,
-                audioData: audioData // This will be null for browser speech
+                audioData: audioData, // This will be null for browser speech
+                ocrContext: documentContext
             };
 
             const response = await axios.post(`${API_BASE_URL}/api/vakil-friend/chat/${sessionId}`, payload, {
@@ -831,6 +837,73 @@ export default function VakilFriendChat() {
             setUploadingFile(false);
         }
     };
+
+    const handleOCRUpload = async (e) => {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+        setIsScanningDocument(true);
+
+        // Show loading message
+        setMessages(prev => [
+            ...prev,
+            {
+                role: 'assistant',
+                content: '📜 Scanning ancient document...'
+            }
+        ]);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // OCR API call
+        const response = await axios.post(
+            `${API_BASE_URL}/ocr/modi`,
+            formData,
+            {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            }
+        );
+
+        const extractedText = response.data.predicted_text || '';
+            
+
+        if (!extractedText.trim()) {
+            throw new Error('No readable text found');
+        }
+
+        setDocumentContext(extractedText);
+
+        // Display OCR result in chat
+        setMessages(prev => [
+            ...prev,
+            {
+                role: 'assistant',
+                content:
+                    `📜 I have scanned the historical document.\n\n${extractedText}\n\nYou can now ask questions about this document.`
+            }
+        ]);
+
+    } catch (error) {
+        console.error('OCR scanning failed:', error);
+
+        setMessages(prev => [
+            ...prev,
+            {
+                role: 'assistant',
+                content:
+                    '⚠️ Unable to scan the document clearly. Please upload a sharper image.'
+            }
+        ]);
+
+    } finally {
+        setIsScanningDocument(false);
+    }
+};
 
     const removeAttachment = (fileName) => {
         setAttachedFiles(prev => prev.filter(f => f.name !== fileName));
@@ -1628,7 +1701,14 @@ export default function VakilFriendChat() {
                             onChange={handleFileSelect}
                             style={{ display: 'none' }}
                         />
-
+                        {/* OCR hidden input */}
+                        <input
+                            ref={ocrFileInputRef}
+                            type="file"
+                            accept=".jpg,.jpeg,.png"
+                            onChange={handleOCRUpload}
+                            style={{ display: 'none' }}
+                        />
                         {/* Paperclip button */}
                         <button
                             onClick={() => fileInputRef.current?.click()}
@@ -1655,7 +1735,31 @@ export default function VakilFriendChat() {
                                 <Paperclip size={20} />
                             )}
                         </button>
-
+                        {/* OCR Scan button */}
+                        <button
+                            onClick={() => ocrFileInputRef.current?.click()}
+                            disabled={isLoading || isStarting || isScanningDocument}
+                            title="Scan Historical Document"
+                            style={{
+                                padding: '0.75rem',
+                                background: 'var(--bg-glass)',
+                                border: 'var(--border-glass)',
+                                borderRadius: '0.625rem',
+                                color: isScanningDocument
+                                    ? 'var(--text-secondary)'
+                                    : '#d97706',
+                                cursor:
+                                    (isLoading || isStarting || isScanningDocument)
+                                        ? 'not-allowed'
+                                        : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                        <Scan size={18} />
+                    </button>
                         <textarea
                             value={inputMessage}
                             onChange={(e) => setInputMessage(e.target.value)}
